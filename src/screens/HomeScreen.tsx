@@ -1,21 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-} from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, StatusBar, TouchableOpacity, Text } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
-import { Card } from '../components/Card';
-import { PrayerTimeCard } from '../components/PrayerTimeCard';
 import { prayerTimesService } from '../services/api';
-import { PrayerTimeData, RootStackParamList } from '../types';
-import { COLORS, SPACING, SIZES } from '../constants';
+import { adhanService } from '../services/adhanService';
+import { PrayerTimeData, RootStackParamList, PrayerName } from '../types';
+import { COLORS, SPACING } from '../constants';
 import { useTheme } from '../hooks/useTheme';
+import { HomeHeader } from '../components/home/HomeHeader';
+import { NextPrayerCard } from '../components/home/NextPrayerCard';
+import { PrayerTimesSection } from '../components/home/PrayerTimesSection';
+import { HomeActions } from '../components/home/HomeActions';
+import { HomeFooter } from '../components/home/HomeFooter';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -28,14 +24,26 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [prayerTimes, setPrayerTimes] = useState<PrayerTimeData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [nextPrayer, setNextPrayer] = useState<{ name: PrayerName; time: string; timeUntil: string } | null>(null);
+  const [isAdhanPlaying, setIsAdhanPlaying] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentTime(new Date());
+      const now = new Date();
+      setCurrentTime(now);
+      setIsAdhanPlaying(adhanService.getIsAdhanPlaying());
     }, 1000);
 
     return () => clearInterval(timer);
   }, []);
+
+  // Update next prayer countdown based on current time
+  useEffect(() => {
+    if (!prayerTimes) return;
+
+    const nextPrayerInfo = adhanService.getNextPrayer(prayerTimes);
+    setNextPrayer(nextPrayerInfo);
+  }, [prayerTimes, currentTime]);
 
   useEffect(() => {
     loadPrayerTimes();
@@ -62,16 +70,20 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       const month = today.getMonth(); // 0-11
       const day = today.getDate(); // 1-31
       
-      console.log('Prayer times response type:', typeof data);
-      console.log('Current month:', month + 1, 'Day:', day);
-      
       // The API returns data as an object with month numbers as string keys
       // Cast to any to access by month number
       const monthlyData = (data as any)[month + 1];
       
       if (monthlyData && Array.isArray(monthlyData) && monthlyData[day - 1]) {
-        setPrayerTimes(monthlyData[day - 1]);
-        console.log('Prayer times loaded successfully');
+        const todayPrayerTimes = monthlyData[day - 1];
+        setPrayerTimes(todayPrayerTimes);
+        
+        // Schedule Adhan notifications
+        await adhanService.scheduleAdhanNotifications(todayPrayerTimes);
+        
+        // Get next prayer info
+        const nextPrayerInfo = adhanService.getNextPrayer(todayPrayerTimes);
+        setNextPrayer(nextPrayerInfo);
       } else {
         console.error('Could not access prayer times for month:', month + 1, 'day:', day);
         Alert.alert('خطأ', 'تعذر الحصول على أوقات الصلاة لهذا اليوم');
@@ -116,101 +128,62 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <View style={[styles.container, isDarkMode && styles.containerDark]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={toggleTheme}
-            style={[styles.themeButton, isDarkMode && styles.themeButtonDark]}
-          >
-            <Text style={styles.themeIcon}>{isDarkMode ? '☀️' : '🌙'}</Text>
-          </TouchableOpacity>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+      <HomeHeader
+        isDarkMode={isDarkMode}
+        toggleTheme={toggleTheme}
+        currentTimeLabel={formatTime(currentTime)}
+        currentDateLabel={new Date().toLocaleDateString('ar-EG', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        })}
+      />
 
-          <View style={styles.timeContainer}>
-            <Text style={[styles.currentTime, isDarkMode && styles.textDark]}>
-              {formatTime(currentTime)}
-            </Text>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
+      >
+        {isAdhanPlaying && (
+          <View style={styles.adhanBanner}>
+            <View style={styles.adhanBannerContent}>
+              <View style={styles.adhanTextContainer}>
+                <Text style={styles.adhanTitle}>يتم الآن تشغيل الأذان</Text>
+                <Text style={styles.adhanSubtitle}>اضغط لإيقاف صوت الأذان</Text>
+              </View>
+              <TouchableOpacity
+                onPress={async () => {
+                  await adhanService.stopAdhan();
+                  setIsAdhanPlaying(false);
+                }}
+                style={styles.stopButtonWrapper}
+              >
+                <Text style={styles.stopButtonText}>إيقاف</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
 
-        {/* Prayer Times */}
-        <Card isDarkMode={isDarkMode} style={styles.prayerCard}>
-          <Text style={[styles.sectionTitle, isDarkMode && styles.textDark]}>
-            أوقات الصلاة
-          </Text>
-          
-          {loading ? (
-            <ActivityIndicator size="large" color={COLORS.primary} />
-          ) : prayerTimes ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <PrayerTimeCard
-                name="الفجر"
-                time={formatTime(prayerTimes.timings.Fajr.slice(0, 5))}
-                isDarkMode={isDarkMode}
-              />
-              <PrayerTimeCard
-                name="الشروق"
-                time={formatTime(prayerTimes.timings.Sunrise.slice(0, 5))}
-                isDarkMode={isDarkMode}
-              />
-              <PrayerTimeCard
-                name="الظهر"
-                time={formatTime(prayerTimes.timings.Dhuhr.slice(0, 5))}
-                isDarkMode={isDarkMode}
-              />
-              <PrayerTimeCard
-                name="العصر"
-                time={formatTime(prayerTimes.timings.Asr.slice(0, 5))}
-                isDarkMode={isDarkMode}
-              />
-              <PrayerTimeCard
-                name="المغرب"
-                time={formatTime(prayerTimes.timings.Maghrib.slice(0, 5))}
-                isDarkMode={isDarkMode}
-              />
-              <PrayerTimeCard
-                name="العشاء"
-                time={formatTime(prayerTimes.timings.Isha.slice(0, 5))}
-                isDarkMode={isDarkMode}
-              />
-            </ScrollView>
-          ) : (
-            <Text style={[styles.errorText, isDarkMode && styles.textDark]}>
-              لم يتم تحميل أوقات الصلاة
-            </Text>
-          )}
-        </Card>
+        {nextPrayer && (
+          <NextPrayerCard
+            isDarkMode={isDarkMode}
+            nextPrayer={nextPrayer}
+            formatTime={formatTime}
+          />
+        )}
 
-        {/* Main Title */}
-        <View style={styles.titleContainer}>
-          <Text style={[styles.mainTitle, isDarkMode && styles.textDark]}>
-            الآن هُوَ وَقْتُ الْقُرْءَانِ
-          </Text>
-        </View>
+        <PrayerTimesSection
+          isDarkMode={isDarkMode}
+          loading={loading}
+          prayerTimes={prayerTimes}
+          nextPrayerName={nextPrayer?.name ?? null}
+          formatTime={formatTime}
+        />
 
-        {/* Action Buttons */}
-        <View style={styles.actionsContainer}>
-          <TouchableOpacity
-            style={[styles.actionButton, isDarkMode && styles.actionButtonDark]}
-            onPress={() => navigation.navigate('SurahList')}
-          >
-            <Text style={styles.actionButtonText}>📖 قائمة السور</Text>
-          </TouchableOpacity>
+        <HomeActions isDarkMode={isDarkMode} navigation={navigation} />
 
-          <TouchableOpacity
-            style={[styles.actionButton, isDarkMode && styles.actionButtonDark]}
-            onPress={() => navigation.navigate('Settings')}
-          >
-            <Text style={styles.actionButtonText}>⚙️ الإعدادات</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={[styles.footerText, isDarkMode && styles.textDark]}>
-            شَرف بتصميمه عبدالرحمن احمد
-          </Text>
-        </View>
+        <HomeFooter isDarkMode={isDarkMode} />
       </ScrollView>
     </View>
   );
@@ -224,97 +197,50 @@ const styles = StyleSheet.create({
   containerDark: {
     backgroundColor: COLORS.darkBackground,
   },
-  header: {
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl + 20,
+  scrollView: {
+    marginTop: -SPACING.xl,
   },
-  themeButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: COLORS.white,
+  scrollContent: {
+    paddingBottom: SPACING.xl,
+  },
+  adhanBanner: {
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.xl,
+    marginBottom: SPACING.md,
+    borderRadius: 16,
+    backgroundColor: COLORS.gold + '22',
+    padding: SPACING.md,
+  },
+  adhanBannerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  adhanTextContainer: {
+    flex: 1,
+    marginRight: SPACING.md,
+  },
+  adhanTitle: {
+    color: COLORS.primaryDark,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  adhanSubtitle: {
+    color: COLORS.textMuted,
+    marginTop: 4,
+    fontSize: 12,
+  },
+  stopButtonWrapper: {
+    width: 90,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.error,
     justifyContent: 'center',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  themeButtonDark: {
-    backgroundColor: COLORS.darkCard,
-  },
-  themeIcon: {
-    fontSize: SIZES.xlarge,
-  },
-  timeContainer: {
-    alignItems: 'center',
-    marginTop: SPACING.lg,
-  },
-  currentTime: {
-    fontSize: SIZES.xxlarge,
-    fontWeight: 'bold',
-    color: COLORS.text,
-  },
-  prayerCard: {
-    marginHorizontal: SPACING.md,
-  },
-  sectionTitle: {
-    fontSize: SIZES.large,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    textAlign: 'center',
-    marginBottom: SPACING.md,
-  },
-  errorText: {
-    textAlign: 'center',
-    color: COLORS.error,
-    fontSize: SIZES.medium,
-  },
-  titleContainer: {
-    padding: SPACING.lg,
-    alignItems: 'center',
-  },
-  mainTitle: {
-    fontSize: SIZES.xxlarge,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-    textAlign: 'center',
-  },
-  actionsContainer: {
-    padding: SPACING.md,
-    gap: SPACING.md,
-  },
-  actionButton: {
-    backgroundColor: COLORS.primary,
-    padding: SPACING.lg,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  actionButtonDark: {
-    backgroundColor: COLORS.accent,
-  },
-  actionButtonText: {
-    fontSize: SIZES.large,
-    fontWeight: 'bold',
+  stopButtonText: {
     color: COLORS.white,
-  },
-  footer: {
-    padding: SPACING.xl,
-    alignItems: 'center',
-  },
-  footerText: {
-    fontSize: SIZES.medium,
-    color: COLORS.text,
-    opacity: 0.7,
-  },
-  textDark: {
-    color: COLORS.textLight,
+    fontWeight: 'bold',
+    fontSize: 14,
   },
 });

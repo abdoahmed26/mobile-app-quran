@@ -8,6 +8,30 @@ export interface PrayerTimings {
   Isha: string;
 }
 
+// Adhan (Call to Prayer) Types
+export type PrayerName = 'Fajr' | 'Dhuhr' | 'Asr' | 'Maghrib' | 'Isha';
+
+export interface AdhanSettings {
+  enabled: boolean;
+  sound: 'default' | 'makkah' | 'madinah';
+  volume: number; // 0-1
+  enabledPrayers: {
+    Fajr: boolean;
+    Dhuhr: boolean;
+    Asr: boolean;
+    Maghrib: boolean;
+    Isha: boolean;
+  };
+}
+
+export const PRAYER_NAMES: Record<PrayerName, string> = {
+  Fajr: 'الفجر',
+  Dhuhr: 'الظهر',
+  Asr: 'العصر',
+  Maghrib: 'المغرب',
+  Isha: 'العشاء',
+};
+
 export interface PrayerTimeData {
   timings: PrayerTimings;
   date: {

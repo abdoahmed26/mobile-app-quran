@@ -7,15 +7,17 @@ import {
   ActivityIndicator,
   Alert,
   TouchableOpacity,
+  StatusBar,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Card } from '../components/Card';
 import { AudioPlayer } from '../components/AudioPlayer';
 import { quranService } from '../services/api';
 import { Surah, RootStackParamList } from '../types';
-import { COLORS, SPACING, SIZES } from '../constants';
+import { COLORS, SPACING, SIZES, FONTS } from '../constants';
 import { useTheme } from '../hooks/useTheme';
 import { useAudio } from '../context/AudioContext';
 
@@ -44,10 +46,7 @@ export const SurahReaderScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const loadSurah = async () => {
     try {
-      // Use the new API that fetches verses
       const { surah: selectedSurah, verses } = await quranService.getSurahWithVerses(surahNumber);
-      
-      // Attach verses to surah object
       selectedSurah.verses = verses;
       setSurah(selectedSurah);
     } catch (error) {
@@ -99,93 +98,76 @@ export const SurahReaderScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <View style={[styles.container, isDarkMode && styles.containerDark]}>
-      {/* Audio Player */}
-      {playingSurah && <AudioPlayer isDarkMode={isDarkMode} />}
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Surah Header */}
-        <Card isDarkMode={isDarkMode} style={styles.headerCard}>
-          {/* Navigation Buttons */}
-          <View style={styles.navigationContainer}>
+        {/* Header Section */}
+        <LinearGradient
+          colors={isDarkMode ? COLORS.gradients.darkVertical : COLORS.gradients.primaryVertical}
+          style={styles.headerBackground}
+        >
+          {/* Navigation & Title */}
+          <View style={styles.headerContent}>
             <TouchableOpacity 
-              style={[
-                styles.navButton, 
-                isDarkMode && styles.navButtonDark,
-                surahNumber >= 114 && styles.navButtonDisabled
-              ]}
+              style={[styles.navButton, surahNumber >= 114 && styles.navButtonDisabled]}
               onPress={handleNextSurah}
               disabled={surahNumber >= 114}
             >
-              <Ionicons 
-                name="chevron-forward" 
-                size={24} 
-                color={surahNumber >= 114 ? COLORS.textMuted : (isDarkMode ? COLORS.accent : COLORS.primary)} 
-              />
-              <Text style={[
-                styles.navButtonText, 
-                isDarkMode && styles.navButtonTextDark,
-                surahNumber >= 114 && styles.navButtonTextDisabled
-              ]}>
-                التالي
-              </Text>
+              <Ionicons name="chevron-forward" size={24} color={COLORS.white} />
             </TouchableOpacity>
 
-            <View style={styles.headerCenter}>
-              <Text style={[styles.surahName, isDarkMode && styles.textDark]}>
-                سورة {surah.name_translations.ar}
-              </Text>
-              <Text style={[styles.surahInfo, isDarkMode && styles.textDark]}>
+            <View style={styles.titleContainer}>
+              <Text style={styles.surahName}>سورة {surah.name_translations.ar}</Text>
+              <Text style={styles.surahInfo}>
                 {surah.place === 'Mecca' ? 'مكية' : 'مدنية'} • {surah.number_of_ayah} آية
               </Text>
             </View>
 
             <TouchableOpacity 
-              style={[
-                styles.navButton, 
-                isDarkMode && styles.navButtonDark,
-                surahNumber <= 1 && styles.navButtonDisabled
-              ]}
+              style={[styles.navButton, surahNumber <= 1 && styles.navButtonDisabled]}
               onPress={handlePreviousSurah}
               disabled={surahNumber <= 1}
             >
-              <Text style={[
-                styles.navButtonText, 
-                isDarkMode && styles.navButtonTextDark,
-                surahNumber <= 1 && styles.navButtonTextDisabled
-              ]}>
-                السابق
-              </Text>
-              <Ionicons 
-                name="chevron-back" 
-                size={24} 
-                color={surahNumber <= 1 ? COLORS.textMuted : (isDarkMode ? COLORS.accent : COLORS.primary)} 
-              />
+              <Ionicons name="chevron-back" size={24} color={COLORS.white} />
             </TouchableOpacity>
           </View>
-          
+
+          {/* Play Button */}
           <TouchableOpacity 
-            style={[styles.playButton, isDarkMode && styles.playButtonDark]}
+            style={styles.playButton}
             onPress={handlePlay}
           >
+            <Ionicons 
+              name={playingSurah?.number_of_surah === surah.number_of_surah && isPlaying ? "pause" : "play"} 
+              size={24} 
+              color={COLORS.primary} 
+            />
             <Text style={styles.playButtonText}>
               {playingSurah?.number_of_surah === surah.number_of_surah && isPlaying 
                 ? 'إيقاف الاستماع' 
                 : 'استماع للسورة'}
             </Text>
           </TouchableOpacity>
-        </Card>
+
+          {/* Audio Player pinned to bottom of header */}
+          {playingSurah && (
+            <View style={styles.playerWrapper}>
+              <AudioPlayer isDarkMode={isDarkMode} />
+            </View>
+          )}
+        </LinearGradient>
 
         {/* Bismillah */}
         {surahNumber !== 1 && surahNumber !== 9 && (
-          <Card isDarkMode={isDarkMode} style={styles.bismillahCard}>
+          <View style={styles.bismillahContainer}>
             <Text style={[styles.bismillah, isDarkMode && styles.textDark]}>
               بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
             </Text>
-          </Card>
+          </View>
         )}
 
         {/* Verses */}
-        <Card isDarkMode={isDarkMode} style={styles.versesCard}>
+        <View style={styles.versesContainer}>
           {surah.verses && surah.verses.length > 0 ? (
             <Text style={[styles.versesText, isDarkMode && styles.textDark]}>
               {surah.verses.map((verse, index) => (
@@ -209,7 +191,7 @@ export const SurahReaderScreen: React.FC<Props> = ({ route, navigation }) => {
               </Text>
             </View>
           )}
-        </Card>
+        </View>
       </ScrollView>
     </View>
   );
@@ -234,113 +216,96 @@ const styles = StyleSheet.create({
     fontSize: SIZES.medium,
     color: COLORS.text,
   },
-  errorText: {
-    fontSize: SIZES.large,
-    color: COLORS.error,
-    textAlign: 'center',
+  headerBackground: {
+    paddingTop: StatusBar.currentHeight || 40,
+    paddingBottom: SPACING.xl,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    elevation: 8,
+    shadowColor: COLORS.shadows.dark,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    marginBottom: SPACING.md,
   },
-  headerCard: {
-    marginTop: SPACING.md,
-    marginHorizontal: SPACING.md,
-    alignItems: 'center',
-  },
-  navigationContainer: {
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    width: '100%',
-    marginBottom: SPACING.md,
-  },
-  navButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: 12,
-    backgroundColor: COLORS.backgroundLight,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
+    marginBottom: SPACING.lg,
   },
-  navButtonDark: {
-    backgroundColor: COLORS.darkCardLight,
-    borderColor: COLORS.accent,
-  },
-  navButtonDisabled: {
-    opacity: 0.3,
-    borderColor: COLORS.textMuted,
-  },
-  navButtonText: {
-    fontSize: SIZES.medium,
-    color: COLORS.primary,
-    fontWeight: '600',
-    marginHorizontal: SPACING.xs,
-  },
-  navButtonTextDark: {
-    color: COLORS.accent,
-  },
-  navButtonTextDisabled: {
-    color: COLORS.textMuted,
-  },
-  headerCenter: {
-    flex: 1,
+  titleContainer: {
     alignItems: 'center',
-    paddingHorizontal: SPACING.sm,
   },
   surahName: {
-    fontSize: SIZES.xxlarge,
+    fontSize: 32,
     fontWeight: 'bold',
-    color: COLORS.primary,
+    color: COLORS.white,
+    fontFamily: FONTS.arabic,
     marginBottom: SPACING.xs,
-    textAlign: 'center',
   },
   surahInfo: {
     fontSize: SIZES.medium,
-    color: COLORS.text,
-    opacity: 0.7,
-    textAlign: 'center',
+    color: 'rgba(255,255,255,0.8)',
   },
-  playButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.sm,
+  navButton: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    marginTop: SPACING.md,
-  },
-  playButtonDark: {
-    backgroundColor: COLORS.accent,
-  },
-  playButtonText: {
-    color: COLORS.white,
-    fontSize: SIZES.medium,
-    fontWeight: 'bold',
-  },
-  bismillahCard: {
-    marginHorizontal: SPACING.md,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
+  navButtonDisabled: {
+    opacity: 0.3,
+  },
+  playButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: 30,
+    marginHorizontal: SPACING.xl,
+    elevation: 4,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  playButtonText: {
+    color: COLORS.primary,
+    fontSize: SIZES.medium,
+    fontWeight: 'bold',
+    marginLeft: SPACING.sm,
+  },
+  bismillahContainer: {
+    alignItems: 'center',
+    marginVertical: SPACING.lg,
+  },
   bismillah: {
-    fontSize: SIZES.xlarge,
+    fontSize: 28,
     fontWeight: 'bold',
     color: COLORS.primary,
-    textAlign: 'center',
+    fontFamily: FONTS.arabic,
   },
-  versesCard: {
-    marginHorizontal: SPACING.md,
-    marginBottom: SPACING.xl,
-    padding: SPACING.lg,
+  versesContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xxl,
   },
   versesText: {
     textAlign: 'justify',
-    direction: 'rtl',
+    lineHeight: 50,
   },
   verseText: {
-    fontSize: SIZES.xxlarge,
-    lineHeight: SIZES.xxlarge * 2.5,
+    fontSize: 26,
     color: COLORS.text,
-    fontWeight: '500',
+    fontFamily: FONTS.arabic,
   },
   verseNumberWrapper: {
-    fontSize: SIZES.xlarge,
+    fontSize: 22,
     color: COLORS.primary,
     fontWeight: 'bold',
     marginHorizontal: SPACING.xs,
@@ -352,6 +317,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.xl,
   },
+  errorText: {
+    fontSize: SIZES.large,
+    color: COLORS.error,
+    textAlign: 'center',
+  },
   infoText: {
     fontSize: SIZES.medium,
     color: COLORS.text,
@@ -361,5 +331,10 @@ const styles = StyleSheet.create({
   },
   textDark: {
     color: COLORS.textLight,
+  },
+  playerWrapper: {
+    marginTop: SPACING.lg,
+    marginHorizontal: SPACING.md,
+    marginBottom: -SPACING.md,
   },
 });

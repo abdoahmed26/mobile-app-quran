@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "القرآن الكريم",
+    "name": "سُكون",
     "slug": "quran-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -16,7 +16,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.quranapp.mobile",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "نحتاج إلى موقعك لتحديد أوقات الصلاة بدقة"
+        "NSLocationWhenInUseUsageDescription": "نحتاج إلى موقعك لتحديد أوقات الصلاة بدقة",
+        "UIBackgroundModes": [
+          "audio",
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -28,7 +33,11 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.WAKE_LOCK",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -43,11 +52,24 @@
         {
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/quran1.png",
+          "color": "#1a472a",
+          "sounds": [
+            "./assets/audio/adhan.mp3",
+            "./assets/audio/adhan_makkah.mp3",
+            "./assets/audio/adhan_madinah.mp3"
+          ],
+          "mode": "production"
+        }
       ]
     ],
     "extra": {
       "eas": {
-        "projectId": "f81ff8e6-6965-4845-a00a-c7a9fd32e8a0"
+        "projectId": "d730c377-3713-4d2e-aac3-ea963640c6fa"
       }
     }
   }

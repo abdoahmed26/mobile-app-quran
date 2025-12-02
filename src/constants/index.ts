@@ -1,38 +1,62 @@
 export const COLORS = {
-  primary: '#1a472a',
-  primaryLight: '#2d5f3f',
-  primaryDark: '#0d2315',
-  secondary: '#2d5f3f',
-  accent: '#d4af37',
-  accentLight: '#f0c674',
-  accentDark: '#b8941f',
-  background: '#f5f5dc',
-  backgroundLight: '#faf8f0',
-  darkBackground: '#0f1419',
-  darkBackgroundLight: '#1a1f2e',
-  darkCard: '#1a1f2e',
-  darkCardLight: '#252b3d',
-  text: '#2c3e50',
-  textLight: '#ecf0f1',
-  textMuted: '#7f8c8d',
+  // Primary Colors - Deep Green (Islamic theme)
+  primary: '#2e7d32',
+  primaryLight: '#4caf50',
+  primaryDark: '#1b5e20',
+  
+  // Secondary Colors - Teal
+  secondary: '#00897b',
+  accent: '#00897b',
+  accentLight: '#26a69a',
+  accentDark: '#00695c',
+  
+  // Gold for highlights
+  gold: '#ffd700',
+  goldLight: '#ffed4e',
+  goldDark: '#c7a600',
+  
+  // Backgrounds
+  background: '#f5f5f5',
+  backgroundLight: '#fafafa',
+  darkBackground: '#121212',
+  darkBackgroundLight: '#1e1e1e',
+  
+  // Cards
+  card: '#ffffff',
+  darkCard: '#1e1e1e',
+  darkCardLight: '#2c2c2c',
+  
+  // Text
+  text: '#212121',
+  textLight: '#e0e0e0',
+  textMuted: '#757575',
   white: '#ffffff',
   black: '#000000',
-  border: '#ddd',
-  borderDark: '#2c3340',
-  success: '#27ae60',
-  error: '#e74c3c',
-  warning: '#f39c12',
-  info: '#3498db',
+  
+  // Borders
+  border: '#e0e0e0',
+  borderDark: '#424242',
+  
+  // Status Colors
+  success: '#4caf50',
+  error: '#f44336',
+  warning: '#ff9800',
+  info: '#2196f3',
   
   // Gradients
   gradients: {
-    primary: ['#1a472a', '#2d5f3f', '#1a472a'] as const,
-    primaryVertical: ['#0d2315', '#1a472a', '#2d5f3f'] as const,
-    accent: ['#d4af37', '#f0c674', '#d4af37'] as const,
-    dark: ['#0f1419', '#1a1f2e', '#0f1419'] as const,
-    darkVertical: ['#0a0d11', '#0f1419', '#1a1f2e'] as const,
-    card: ['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.85)'] as const,
-    cardDark: ['rgba(26, 31, 46, 0.95)', 'rgba(37, 43, 61, 0.85)'] as const,
+    primary: ['#2e7d32', '#1b5e20'] as const,
+    primaryLight: ['#4caf50', '#2e7d32'] as const,
+    primaryVertical: ['#1b5e20', '#2e7d32'] as const,
+    accent: ['#00897b', '#00695c'] as const,
+    accentLight: ['#26a69a', '#00897b'] as const,
+    gold: ['#ffd700', '#c7a600'] as const,
+    dark: ['#1e1e1e', '#121212'] as const,
+    darkVertical: ['#121212', '#1e1e1e'] as const,
+    card: ['#ffffff', '#f5f5f5'] as const,
+    cardDark: ['#2c2c2c', '#1e1e1e'] as const,
+    prayer: ['#e8f5e9', '#c8e6c9'] as const,
+    prayerDark: ['#1a472a', '#2d5f3f'] as const,
   },
   
   // Overlays
@@ -58,11 +82,13 @@ export const FONTS = {
 };
 
 export const SIZES = {
+  tiny: 10,
   small: 12,
   medium: 16,
   large: 20,
   xlarge: 24,
   xxlarge: 32,
+  hero: 40,
 };
 
 export const SPACING = {
@@ -71,6 +97,7 @@ export const SPACING = {
   md: 16,
   lg: 24,
   xl: 32,
+  xxl: 48,
 };
 
 export const API_ENDPOINTS = {
