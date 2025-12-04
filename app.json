@@ -17,11 +17,7 @@
       "bundleIdentifier": "com.quranapp.mobile",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "نحتاج إلى موقعك لتحديد أوقات الصلاة بدقة",
-        "UIBackgroundModes": [
-          "audio",
-          "fetch",
-          "remote-notification"
-        ]
+        "UIBackgroundModes": []
       }
     },
     "android": {
@@ -69,7 +65,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "d730c377-3713-4d2e-aac3-ea963640c6fa"
+        "projectId": "c40dd2e8-bf39-4f10-96bb-4791538ea818"
       }
     }
   }

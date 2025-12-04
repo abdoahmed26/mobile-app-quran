@@ -1,5 +1,4 @@
 import * as Notifications from 'expo-notifications';
-import { Audio } from 'expo-av';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AdhanSettings, PrayerName, PrayerTimeData } from '../types';
@@ -11,7 +10,7 @@ const ADHAN_SCHEDULED_KEY = '@adhan_scheduled';
 const DEFAULT_ADHAN_SETTINGS: AdhanSettings = {
   enabled: true,
   sound: 'default',
-  volume: 0.8,
+  hijriOffset: 0,
   enabledPrayers: {
     Fajr: true,
     Dhuhr: true,
@@ -21,25 +20,14 @@ const DEFAULT_ADHAN_SETTINGS: AdhanSettings = {
   },
 };
 
-// Adhan audio files mapping
-const ADHAN_SOUNDS: Record<AdhanSettings['sound'], any> = {
-  default: require('../../assets/audio/adhan.mp3'),
-  makkah: require('../../assets/audio/adhan_makkah.mp3'),
-  madinah: require('../../assets/audio/adhan_madinah.mp3'),
+// Map sound settings to actual file names
+const SOUND_FILES: Record<AdhanSettings['sound'], string> = {
+  default: 'adhan.mp3',
+  makkah: 'adhan_makkah.mp3',
+  madinah: 'adhan_madinah.mp3',
 };
 
 class AdhanService {
-  private sound: Audio.Sound | null = null;
-  private isPlaying: boolean = false;
-  private lastPlayedPrayer: { prayer: PrayerName; date: string } | null = null;
-
-  /**
-   * Check if Adhan audio is currently playing
-   */
-  getIsAdhanPlaying(): boolean {
-    return this.isPlaying;
-  }
-
   /**
    * Get Adhan settings from storage
    */
@@ -68,9 +56,17 @@ class AdhanService {
   }
 
   /**
-   * Schedule Adhan notifications for all prayer times
+   * Schedule daily prayer notifications with custom Adhan sounds
+   * This is the main function that schedules all 5 daily prayers
+   * The OS will play the Adhan sound automatically when the notification fires
+   * 
+   * Android: Uses the appropriate notification channel based on selected sound
+   * iOS: Sound is specified directly in notification content
    */
-  async scheduleAdhanNotifications(prayerTimes: PrayerTimeData): Promise<void> {
+  async scheduleDailyPrayerNotifications(
+    prayerTimes: PrayerTimeData,
+    soundName?: AdhanSettings['sound']
+  ): Promise<void> {
     try {
       // Notifications are not available on web
       if (Platform.OS === 'web') {
@@ -85,6 +81,15 @@ class AdhanService {
         return;
       }
 
+      // Use provided sound or get from settings
+      const selectedSound = soundName || settings.sound;
+      const soundFile = SOUND_FILES[selectedSound];
+
+      // Get the correct channel ID for Android
+      const channelId = Platform.OS === 'android' 
+        ? this.getChannelIdForSound(selectedSound)
+        : undefined;
+
       // Cancel existing notifications first
       await this.cancelAllAdhanNotifications();
 
@@ -92,12 +97,17 @@ class AdhanService {
       const scheduledIds: string[] = [];
       const now = new Date();
       
-      console.log('Starting to schedule Adhan notifications. Current time:', now.toISOString());
-      console.log('Adhan settings:', settings);
+      console.log('========================================');
+      console.log('Scheduling Adhan notifications with OS sounds');
+      console.log('Current time:', now.toISOString());
+      console.log('Selected sound:', soundFile);
+      console.log('Android channel ID:', channelId || 'N/A (iOS)');
+      console.log('Settings:', settings);
+      console.log('========================================');
 
       for (const prayer of prayers) {
         if (!settings.enabledPrayers[prayer]) {
-          console.log(`Skipping ${prayer} - disabled in settings`);
+          console.log(`⏭️  Skipping ${prayer} - disabled in settings`);
           continue;
         }
 
@@ -108,7 +118,7 @@ class AdhanService {
         const timeParts = timeOnly.split(':');
         
         if (timeParts.length < 2) {
-          console.error(`Invalid prayer time format for ${prayer}: ${prayerTime}`);
+          console.error(`❌ Invalid prayer time format for ${prayer}: ${prayerTime}`);
           continue;
         }
         
@@ -116,7 +126,7 @@ class AdhanService {
         const minutes = parseInt(timeParts[1], 10);
         
         if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-          console.error(`Invalid hours/minutes for ${prayer}: hours=${hours}, minutes=${minutes}`);
+          console.error(`❌ Invalid hours/minutes for ${prayer}: hours=${hours}, minutes=${minutes}`);
           continue;
         }
 
@@ -132,48 +142,49 @@ class AdhanService {
         
         // Validate the date
         if (isNaN(prayerDate.getTime())) {
-          console.error(`Invalid prayer date created for ${prayer}: ${prayerTime}`);
+          console.error(`❌ Invalid prayer date created for ${prayer}: ${prayerTime}`);
           continue;
         }
 
-        console.log(`Checking ${prayer}: prayer time ${prayerTime} -> ${timeOnly}, prayerDate: ${prayerDate.toISOString()}, now: ${now.toISOString()}, isFuture: ${prayerDate > now}`);
-
         // Only schedule if prayer time is in the future
         if (prayerDate > now) {
-          const notificationData = { 
-            prayer: prayer as PrayerName, 
-            playAdhan: true 
-          };
-          
-          console.log(`Scheduling notification for ${prayer} at ${prayerTime} with data:`, notificationData);
-          
           const notificationId = await Notifications.scheduleNotificationAsync({
             content: {
               title: `🕌 حان وقت صلاة ${this.getPrayerNameArabic(prayer)}`,
               body: 'حان الآن موعد الصلاة',
-              sound: true,
-              priority: Notifications.AndroidNotificationPriority.HIGH,
-              data: notificationData,
+              sound: soundFile, // For iOS and as fallback
+              priority: Notifications.AndroidNotificationPriority.MAX,
               categoryIdentifier: 'adhan',
             },
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: prayerDate,
-              channelId: 'adhan', // Use the adhan channel we created
+              channelId: channelId, // Use correct channel for Android
             },
           });
 
           scheduledIds.push(notificationId);
-          console.log(`Successfully scheduled Adhan notification for ${prayer} at ${prayerTime}, ID: ${notificationId}`);
+          console.log(`✅ Scheduled ${prayer} at ${timeOnly} (ID: ${notificationId}, Channel: ${channelId || 'default'})`);
+        } else {
+          console.log(`⏭️  Skipping ${prayer} at ${timeOnly} - time has passed`);
         }
       }
 
       // Save scheduled notification IDs
       await AsyncStorage.setItem(ADHAN_SCHEDULED_KEY, JSON.stringify(scheduledIds));
-      console.log(`Total notifications scheduled: ${scheduledIds.length}`, scheduledIds);
+      console.log('========================================');
+      console.log(`✅ Total notifications scheduled: ${scheduledIds.length}`);
+      console.log('========================================');
     } catch (error) {
-      console.error('Error scheduling Adhan notifications:', error);
+      console.error('❌ Error scheduling Adhan notifications:', error);
     }
+  }
+
+  /**
+   * Alias for scheduleDailyPrayerNotifications for backward compatibility
+   */
+  async scheduleAdhanNotifications(prayerTimes: PrayerTimeData): Promise<void> {
+    return this.scheduleDailyPrayerNotifications(prayerTimes);
   }
 
   /**
@@ -193,174 +204,11 @@ class AdhanService {
         for (const id of scheduledIds) {
           await Notifications.cancelScheduledNotificationAsync(id);
         }
+        console.log(`🗑️  Cancelled ${scheduledIds.length} scheduled notifications`);
       }
       await AsyncStorage.removeItem(ADHAN_SCHEDULED_KEY);
-      console.log('Cancelled all Adhan notifications');
     } catch (error) {
       console.error('Error cancelling Adhan notifications:', error);
-    }
-  }
-
-  /**
-   * Play Adhan audio
-   */
-  async playAdhan(prayerName?: PrayerName): Promise<void> {
-    try {
-      const settings = await this.getSettings();
-      console.log('Playing Adhan with settings:', settings);
-      
-      // Stop any currently playing Adhan
-      if (this.sound) {
-        try {
-          await this.sound.stopAsync();
-          await this.sound.unloadAsync();
-        } catch (e) {
-          console.log('Error stopping previous sound:', e);
-        }
-        this.sound = null;
-        this.isPlaying = false;
-      }
-
-      // Set audio mode for playback
-      try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          staysActiveInBackground: true,
-          playsInSilentModeIOS: true,
-          shouldDuckAndroid: false,
-          playThroughEarpieceAndroid: false,
-        });
-        console.log('Audio mode set successfully');
-      } catch (audioModeError) {
-        console.error('Error setting audio mode:', audioModeError);
-      }
-
-      // Load and play Adhan
-      const adhanSource = ADHAN_SOUNDS[settings.sound];
-      if (!adhanSource) {
-        console.error('Adhan source not found for sound:', settings.sound);
-        return;
-      }
-
-      console.log('Loading audio source:', settings.sound);
-      const { sound } = await Audio.Sound.createAsync(
-        adhanSource,
-        {
-          shouldPlay: true,
-          volume: settings.volume,
-          isLooping: false,
-        }
-      );
-
-      this.sound = sound;
-      this.isPlaying = true;
-
-      // Handle playback status updates
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (!status.isLoaded) {
-          if ('error' in status) {
-            console.error('Playback error:', status.error);
-            this.isPlaying = false;
-            this.sound = null;
-          }
-          return;
-        }
-
-        if (status.didJustFinish) {
-          console.log('Adhan finished playing');
-          sound.unloadAsync().catch(e => console.error('Error unloading sound:', e));
-          this.sound = null;
-          this.isPlaying = false;
-        }
-      });
-
-      // Track last played prayer to avoid duplicates
-      if (prayerName) {
-        const today = new Date().toDateString();
-        this.lastPlayedPrayer = { prayer: prayerName, date: today };
-      }
-
-      console.log(`Playing Adhan for ${prayerName || 'prayer'}, volume: ${settings.volume}`);
-    } catch (error) {
-      console.error('Error playing Adhan:', error);
-      this.isPlaying = false;
-      this.sound = null;
-    }
-  }
-
-  /**
-   * Check if current time matches prayer time and play Adhan immediately
-   * This is a backup mechanism to ensure Adhan plays on time even if notifications are delayed
-   */
-  async checkAndPlayAdhanIfNeeded(prayerTimes: PrayerTimeData): Promise<void> {
-    try {
-      const settings = await this.getSettings();
-      if (!settings.enabled || this.isPlaying) {
-        return;
-      }
-
-      const now = new Date();
-      const currentHours = now.getHours();
-      const currentMinutes = now.getMinutes();
-      const currentSeconds = now.getSeconds();
-      const today = now.toDateString();
-
-      const prayers: PrayerName[] = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
-
-      for (const prayer of prayers) {
-        if (!settings.enabledPrayers[prayer]) {
-          continue;
-        }
-
-        const prayerTimeString = prayerTimes.timings[prayer];
-        const timeOnly = prayerTimeString.split(' ')[0];
-        const timeParts = timeOnly.split(':');
-        
-        if (timeParts.length < 2) continue;
-        
-        const prayerHours = parseInt(timeParts[0], 10);
-        const prayerMinutes = parseInt(timeParts[1], 10);
-        
-        if (isNaN(prayerHours) || isNaN(prayerMinutes)) continue;
-
-        // Check if current time matches prayer time exactly (within 30 seconds window)
-        const timeMatches = 
-          currentHours === prayerHours && 
-          currentMinutes === prayerMinutes &&
-          currentSeconds < 30; // Only trigger in first 30 seconds of the minute
-
-        if (timeMatches) {
-          // Prevent playing the same prayer multiple times on the same day
-          if (this.lastPlayedPrayer && 
-              this.lastPlayedPrayer.prayer === prayer &&
-              this.lastPlayedPrayer.date === today) {
-            continue;
-          }
-
-          // It's prayer time! Play Adhan immediately
-          console.log(`[Time Check] Detected prayer time for ${prayer} at ${timeOnly}, playing Adhan now`);
-          await this.playAdhan(prayer);
-          return;
-        }
-      }
-    } catch (error) {
-      console.error('Error checking and playing Adhan:', error);
-    }
-  }
-
-  /**
-   * Stop currently playing Adhan
-   */
-  async stopAdhan(): Promise<void> {
-    try {
-      if (this.sound) {
-        await this.sound.stopAsync();
-        await this.sound.unloadAsync();
-        this.sound = null;
-        this.isPlaying = false;
-      }
-    } catch (error) {
-      console.error('Error stopping Adhan:', error);
     }
   }
 
@@ -426,6 +274,18 @@ class AdhanService {
       console.error('Error getting next prayer:', error);
       return null;
     }
+  }
+
+  /**
+   * Get the channel ID for a given sound (Android only)
+   */
+  private getChannelIdForSound(sound: AdhanSettings['sound']): string {
+    const channelIds: Record<AdhanSettings['sound'], string> = {
+      default: 'adhan-default',
+      makkah: 'adhan-makkah',
+      madinah: 'adhan-madinah',
+    };
+    return channelIds[sound];
   }
 
   /**

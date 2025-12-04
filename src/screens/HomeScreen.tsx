@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, StatusBar, TouchableOpacity, Text } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { prayerTimesService } from '../services/api';
 import { adhanService } from '../services/adhanService';
 import { PrayerTimeData, RootStackParamList, PrayerName } from '../types';
@@ -9,6 +10,7 @@ import { COLORS, SPACING } from '../constants';
 import { useTheme } from '../hooks/useTheme';
 import { HomeHeader } from '../components/home/HomeHeader';
 import { NextPrayerCard } from '../components/home/NextPrayerCard';
+import { HijriCalendar } from '../components/home/HijriCalendar';
 import { PrayerTimesSection } from '../components/home/PrayerTimesSection';
 import { HomeActions } from '../components/home/HomeActions';
 import { HomeFooter } from '../components/home/HomeFooter';
@@ -25,13 +27,10 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const [prayerTimes, setPrayerTimes] = useState<PrayerTimeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [nextPrayer, setNextPrayer] = useState<{ name: PrayerName; time: string; timeUntil: string } | null>(null);
-  const [isAdhanPlaying, setIsAdhanPlaying] = useState(false);
-
+  // Update current time every second
   useEffect(() => {
     const timer = setInterval(() => {
-      const now = new Date();
-      setCurrentTime(now);
-      setIsAdhanPlaying(adhanService.getIsAdhanPlaying());
+      setCurrentTime(new Date());
     }, 1000);
 
     return () => clearInterval(timer);
@@ -77,6 +76,9 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       if (monthlyData && Array.isArray(monthlyData) && monthlyData[day - 1]) {
         const todayPrayerTimes = monthlyData[day - 1];
         setPrayerTimes(todayPrayerTimes);
+        
+        // Cache prayer times for Settings screen
+        await AsyncStorage.setItem('@prayer_times_cache', JSON.stringify(todayPrayerTimes));
         
         // Schedule Adhan notifications
         await adhanService.scheduleAdhanNotifications(todayPrayerTimes);
@@ -145,25 +147,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
         style={styles.scrollView}
       >
-        {isAdhanPlaying && (
-          <View style={styles.adhanBanner}>
-            <View style={styles.adhanBannerContent}>
-              <View style={styles.adhanTextContainer}>
-                <Text style={styles.adhanTitle}>يتم الآن تشغيل الأذان</Text>
-                <Text style={styles.adhanSubtitle}>اضغط لإيقاف صوت الأذان</Text>
-              </View>
-              <TouchableOpacity
-                onPress={async () => {
-                  await adhanService.stopAdhan();
-                  setIsAdhanPlaying(false);
-                }}
-                style={styles.stopButtonWrapper}
-              >
-                <Text style={styles.stopButtonText}>إيقاف</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        {/* Adhan is now played by OS notifications - no in-app playback UI needed */}
 
         {nextPrayer && (
           <NextPrayerCard
@@ -172,6 +156,9 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
             formatTime={formatTime}
           />
         )}
+
+        {/* Hijri Calendar */}
+        <HijriCalendar isDarkMode={isDarkMode} />
 
         <PrayerTimesSection
           isDarkMode={isDarkMode}

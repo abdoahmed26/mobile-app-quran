@@ -13,6 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 import { Card } from '../components/Card';
 import { recitersService } from '../services/api';
 import { adhanService } from '../services/adhanService';
@@ -20,8 +21,16 @@ import { Reciter, AdhanSettings } from '../types';
 import { COLORS, SPACING, SIZES, FONTS } from '../constants';
 import { useTheme } from '../hooks/useTheme';
 import { useAudio } from '../context/AudioContext';
+import { prayerTimesService } from '../services/api';
 
 const SELECTED_RECITER_KEY = '@selected_reciter';
+
+// Adhan audio files mapping for preview
+const ADHAN_SOUNDS: Record<string, any> = {
+  default: require('../../assets/audio/adhan.mp3'),
+  makkah: require('../../assets/audio/adhan_makkah.mp3'),
+  madinah: require('../../assets/audio/adhan_madinah.mp3'),
+};
 
 export const SettingsScreen: React.FC = () => {
   const { isDarkMode, toggleTheme } = useTheme();
@@ -32,11 +41,21 @@ export const SettingsScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showReciters, setShowReciters] = useState(false);
   const [adhanSettings, setAdhanSettings] = useState<AdhanSettings | null>(null);
+  const [previewSound, setPreviewSound] = useState<Audio.Sound | null>(null);
   const [previewPlayingSound, setPreviewPlayingSound] = useState<AdhanSettings['sound'] | null>(null);
+  const [currentPrayerTimes, setCurrentPrayerTimes] = useState<any>(null);
 
   useEffect(() => {
     loadReciters();
     loadAdhanSettings();
+    loadCurrentPrayerTimes();
+
+    // Cleanup preview sound on unmount
+    return () => {
+      if (previewSound) {
+        previewSound.unloadAsync();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -80,6 +99,18 @@ export const SettingsScreen: React.FC = () => {
     setAdhanSettings(settings);
   };
 
+  const loadCurrentPrayerTimes = async () => {
+    try {
+      // Try to load cached prayer times from AsyncStorage
+      const cachedTimes = await AsyncStorage.getItem('@prayer_times_cache');
+      if (cachedTimes) {
+        setCurrentPrayerTimes(JSON.parse(cachedTimes));
+      }
+    } catch (error) {
+      console.log('No cached prayer times found');
+    }
+  };
+
   const handleAdhanSoundChange = async (sound: AdhanSettings['sound']) => {
     if (!adhanSettings) return;
     
@@ -90,7 +121,29 @@ export const SettingsScreen: React.FC = () => {
     
     await adhanService.saveSettings(newSettings);
     setAdhanSettings(newSettings);
-    Alert.alert('نجح', 'تم تغيير صوت الأذان');
+
+    // Reschedule notifications with the new sound
+    // This will automatically use the correct notification channel for Android
+    if (currentPrayerTimes) {
+      console.log('Rescheduling notifications with new sound:', sound);
+      await adhanService.scheduleDailyPrayerNotifications(currentPrayerTimes, sound);
+      Alert.alert('نجح', 'تم تغيير صوت الأذان وإعادة جدولة الإشعارات');
+    } else {
+      Alert.alert('نجح', 'تم تغيير صوت الأذان. سيتم استخدامه في المرة القادمة.');
+    }
+  };
+
+  const handleHijriOffsetChange = async (offset: number) => {
+    if (!adhanSettings) return;
+    
+    const newSettings: AdhanSettings = {
+      ...adhanSettings,
+      hijriOffset: offset,
+    };
+    
+    await adhanService.saveSettings(newSettings);
+    setAdhanSettings(newSettings);
+    Alert.alert('نجح', `تم تعديل التاريخ الهجري: ${offset > 0 ? '+' : ''}${offset} يوم`);
   };
 
   const handlePreviewAdhanSound = async (sound: AdhanSettings['sound']) => {
@@ -98,20 +151,54 @@ export const SettingsScreen: React.FC = () => {
 
     try {
       // If the same sound is already previewing, stop it
-      if (previewPlayingSound === sound) {
-        await adhanService.stopAdhan();
+      if (previewPlayingSound === sound && previewSound) {
+        await previewSound.stopAsync();
+        await previewSound.unloadAsync();
+        setPreviewSound(null);
         setPreviewPlayingSound(null);
         return;
       }
 
-      // Change selected sound and play preview
-      await handleAdhanSoundChange(sound);
-      console.log('Previewing Adhan sound:', sound);
-      await adhanService.playAdhan();
+      // Stop any currently playing preview
+      if (previewSound) {
+        await previewSound.stopAsync();
+        await previewSound.unloadAsync();
+        setPreviewSound(null);
+      }
+
+      // Configure audio mode for playback
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: false,
+      });
+
+      // Load and play the selected Adhan sound
+      const soundSource = ADHAN_SOUNDS[sound];
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        soundSource,
+        { shouldPlay: true, volume: 1.0 },
+        (status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            setPreviewPlayingSound(null);
+            newSound.unloadAsync();
+            setPreviewSound(null);
+          }
+        }
+      );
+
+      setPreviewSound(newSound);
       setPreviewPlayingSound(sound);
+
+      // Save the selected sound
+      await handleAdhanSoundChange(sound);
+      
+      console.log('Playing preview for:', sound);
     } catch (error) {
       console.error('Error previewing Adhan sound:', error);
-      Alert.alert('خطأ', 'حدث خطأ أثناء تشغيل الأذان');
+      Alert.alert('خطأ', 'حدث خطأ أثناء تشغيل المعاينة');
+      setPreviewPlayingSound(null);
     }
   };
 
@@ -253,18 +340,30 @@ export const SettingsScreen: React.FC = () => {
                       styles.adhanSoundButton,
                       isDarkMode && styles.adhanSoundButtonDark,
                       adhanSettings.sound === sound.id && styles.adhanSoundButtonActive,
+                      previewPlayingSound === sound.id && styles.adhanSoundButtonPlaying,
                     ]}
                     onPress={() => handlePreviewAdhanSound(sound.id as AdhanSettings['sound'])}
                   >
-                    <Text style={[
-                      styles.adhanSoundText,
-                      isDarkMode && styles.textDark,
-                      adhanSettings.sound === sound.id && styles.textWhite,
-                    ]}>
-                      {sound.name}
-                    </Text>
-                    {adhanSettings.sound === sound.id && (
+                    <View style={styles.adhanSoundContent}>
+                      <Text style={[
+                        styles.adhanSoundText,
+                        isDarkMode && styles.textDark,
+                        adhanSettings.sound === sound.id && styles.textWhite,
+                      ]}>
+                        {sound.name}
+                      </Text>
+                      {previewPlayingSound === sound.id && (
+                        <Text style={[styles.playingText, adhanSettings.sound === sound.id && styles.textWhite]}>
+                          جاري التشغيل...
+                        </Text>
+                      )}
+                    </View>
+                    {previewPlayingSound === sound.id ? (
+                      <Ionicons name="pause-circle" size={24} color={adhanSettings.sound === sound.id ? COLORS.white : COLORS.primary} />
+                    ) : adhanSettings.sound === sound.id ? (
                       <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
+                    ) : (
+                      <Ionicons name="play-circle" size={24} color={COLORS.textMuted} />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -279,6 +378,88 @@ export const SettingsScreen: React.FC = () => {
             </Card>
           </View>
         )}
+
+        {/* Hijri Calendar Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionHeader, isDarkMode && styles.textMuted]}>التقويم الهجري</Text>
+          <Card isDarkMode={isDarkMode} style={styles.card}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <View style={[styles.iconContainer, { backgroundColor: isDarkMode ? COLORS.darkCardLight : COLORS.background }]}>
+                  <Ionicons name="calendar" size={24} color={COLORS.primary} />
+                </View>
+                <View>
+                  <Text style={[styles.settingLabel, isDarkMode && styles.textDark]}>
+                    تعديل التاريخ الهجري
+                  </Text>
+                  <Text style={[styles.settingValue, isDarkMode && styles.textMuted]}>
+                    الإزاحة: {adhanSettings?.hijriOffset ? (adhanSettings.hijriOffset > 0 ? '+' : '') : ''}{adhanSettings?.hijriOffset || 0} يوم
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.offsetButtonsContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.offsetButton,
+                  isDarkMode && styles.offsetButtonDark,
+                  adhanSettings?.hijriOffset === -1 && styles.offsetButtonActive,
+                ]}
+                onPress={() => handleHijriOffsetChange(-1)}
+              >
+                <Text style={[
+                  styles.offsetButtonText,
+                  isDarkMode && styles.textDark,
+                  adhanSettings?.hijriOffset === -1 && styles.textWhite,
+                ]}>
+                  -1 يوم
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.offsetButton,
+                  isDarkMode && styles.offsetButtonDark,
+                  adhanSettings?.hijriOffset === 0 && styles.offsetButtonActive,
+                ]}
+                onPress={() => handleHijriOffsetChange(0)}
+              >
+                <Text style={[
+                  styles.offsetButtonText,
+                  isDarkMode && styles.textDark,
+                  adhanSettings?.hijriOffset === 0 && styles.textWhite,
+                ]}>
+                  صفر
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.offsetButton,
+                  isDarkMode && styles.offsetButtonDark,
+                  adhanSettings?.hijriOffset === 1 && styles.offsetButtonActive,
+                ]}
+                onPress={() => handleHijriOffsetChange(1)}
+              >
+                <Text style={[
+                  styles.offsetButtonText,
+                  isDarkMode && styles.textDark,
+                  adhanSettings?.hijriOffset === 1 && styles.textWhite,
+                ]}>
+                  +1 يوم
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.noteContainer}>
+              <Ionicons name="information-circle-outline" size={16} color={COLORS.textMuted} />
+              <Text style={[styles.adhanNote, isDarkMode && styles.textMuted]}>
+                بعض المناطق تحتاج لتعديل التاريخ الهجري بيوم واحد
+              </Text>
+            </View>
+          </Card>
+        </View>
 
         {/* About Section */}
         <View style={styles.section}>
@@ -482,10 +663,22 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
   },
+  adhanSoundButtonPlaying: {
+    borderColor: COLORS.primary,
+    borderWidth: 2,
+  },
+  adhanSoundContent: {
+    flex: 1,
+  },
   adhanSoundText: {
     fontSize: SIZES.medium,
     color: COLORS.text,
     fontWeight: '500',
+  },
+  playingText: {
+    fontSize: SIZES.small,
+    color: COLORS.primary,
+    marginTop: 2,
   },
   noteContainer: {
     flexDirection: 'row',
@@ -532,6 +725,33 @@ const styles = StyleSheet.create({
     fontSize: SIZES.medium,
     color: COLORS.text,
     fontWeight: '500',
+  },
+  offsetButtonsContainer: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  offsetButton: {
+    flex: 1,
+    padding: SPACING.md,
+    borderRadius: 12,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  offsetButtonDark: {
+    backgroundColor: COLORS.darkCardLight,
+    borderColor: COLORS.borderDark,
+  },
+  offsetButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  offsetButtonText: {
+    fontSize: SIZES.medium,
+    fontWeight: '600',
+    color: COLORS.text,
   },
   textDark: {
     color: COLORS.textLight,

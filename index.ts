@@ -1,9 +1,5 @@
 import { registerRootComponent } from 'expo';
 
-// Import background task BEFORE the App component
-// This ensures the task is defined before any notifications are received
-import './src/tasks/adhanBackgroundTask';
-
 import App from './App';
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

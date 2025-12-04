@@ -14,7 +14,8 @@ export type PrayerName = 'Fajr' | 'Dhuhr' | 'Asr' | 'Maghrib' | 'Isha';
 export interface AdhanSettings {
   enabled: boolean;
   sound: 'default' | 'makkah' | 'madinah';
-  volume: number; // 0-1
+  hijriOffset: number; // -1, 0, or +1 for regional adjustments
+  // Note: Volume is controlled by device notification volume, not programmatically
   enabledPrayers: {
     Fajr: boolean;
     Dhuhr: boolean;
@@ -172,4 +173,6 @@ export type RootStackParamList = {
   SurahList: undefined;
   SurahReader: { surahNumber: number };
   Settings: undefined;
+  Qibla: undefined;
+  HijriCalendar: undefined;
 };
