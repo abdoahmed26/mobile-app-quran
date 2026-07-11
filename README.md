@@ -306,7 +306,7 @@ Suggestions and improvements are welcome!
 
 ## 📄 License
 
-Created for educational and religious purposes.
+Created for educational and religious purposes
 
 ---
 
